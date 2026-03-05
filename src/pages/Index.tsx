@@ -1,16 +1,30 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Search, Filter, Zap, Trophy, Target, TrendingUp } from "lucide-react";
-import { fixtures, leagues } from "@/data/mockData";
+import { Search, Filter, Zap, Trophy, Target, TrendingUp, Loader2 } from "lucide-react";
+import { useQueries } from "@tanstack/react-query";
+import { fetchLeagueFixtures, LEAGUES } from "@/lib/api";
+import type { UIFixture } from "@/lib/types";
 import FixtureCard from "@/components/FixtureCard";
 import Layout from "@/components/Layout";
+
+const ALL_LEAGUES = ["All", ...LEAGUES.map((l) => l.name)];
 
 const Index = () => {
   const [selectedLeague, setSelectedLeague] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // TODO: fetch fixtures from API-Football
-  const filteredFixtures = fixtures.filter((f) => {
+  const results = useQueries({
+    queries: LEAGUES.map((l) => ({
+      queryKey: ["fixtures", l.code],
+      queryFn: () => fetchLeagueFixtures(l.code, 5),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const isLoading = results.some((r) => r.isLoading);
+  const allFixtures: UIFixture[] = results.flatMap((r) => r.data ?? []);
+
+  const filteredFixtures = allFixtures.filter((f) => {
     const matchesLeague = selectedLeague === "All" || f.league === selectedLeague;
     const matchesSearch =
       !searchQuery ||
@@ -25,7 +39,7 @@ const Index = () => {
       acc[fixture.league].push(fixture);
       return acc;
     },
-    {} as Record<string, typeof fixtures>
+    {} as Record<string, UIFixture[]>
   );
 
   return (
@@ -46,12 +60,11 @@ const Index = () => {
               Pick a match and let our engine do the analysis.
             </p>
 
-            {/* Quick stats */}
             <div className="mt-5 flex flex-wrap gap-3">
               {[
                 { icon: Trophy, label: "5 Leagues", color: "text-primary" },
-                { icon: Target, label: "64% Accuracy", color: "text-secondary" },
-                { icon: TrendingUp, label: "12 Fixtures", color: "text-primary" },
+                { icon: Target, label: "AI Analysis", color: "text-secondary" },
+                { icon: TrendingUp, label: `${allFixtures.length} Fixtures`, color: "text-primary" },
               ].map((stat) => (
                 <div
                   key={stat.label}
@@ -64,7 +77,6 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Background decoration */}
           <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/5 blur-3xl" />
           <div className="absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-secondary/5 blur-3xl" />
         </div>
@@ -72,7 +84,6 @@ const Index = () => {
 
       {/* Filters */}
       <div className="mb-6 space-y-4">
-        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -84,10 +95,9 @@ const Index = () => {
           />
         </div>
 
-        {/* League pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <Filter className="h-4 w-4 shrink-0 text-muted-foreground" />
-          {leagues.map((league) => (
+          {ALL_LEAGUES.map((league) => (
             <button
               key={league}
               onClick={() => setSelectedLeague(league)}
@@ -103,41 +113,46 @@ const Index = () => {
         </div>
       </div>
 
-      {/* Fixture list grouped by league */}
-      <div className="space-y-8">
-        {Object.entries(grouped).map(([league, leagueFixtures]) => (
-          <div key={league}>
-            <div className="mb-3 flex items-center gap-3">
-              <img
-                src={leagueFixtures[0].leagueLogo}
-                alt={league}
-                className="h-6 w-6 object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = "/placeholder.svg";
-                }}
-              />
-              <h2 className="font-display text-lg font-semibold text-foreground">
-                {league}
-              </h2>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                {leagueFixtures.length}
-              </span>
+      {/* Content */}
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading fixtures...</p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {Object.entries(grouped).map(([league, leagueFixtures]) => (
+            <div key={league}>
+              <div className="mb-3 flex items-center gap-3">
+                <img
+                  src={leagueFixtures[0].leagueLogo}
+                  alt={league}
+                  className="h-6 w-6 object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "/placeholder.svg";
+                  }}
+                />
+                <h2 className="font-display text-lg font-semibold text-foreground">{league}</h2>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                  {leagueFixtures.length}
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {leagueFixtures.map((fixture, i) => (
+                  <FixtureCard key={fixture.id} fixture={fixture} index={i} />
+                ))}
+              </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {leagueFixtures.map((fixture, i) => (
-                <FixtureCard key={fixture.id} fixture={fixture} index={i} />
-              ))}
-            </div>
-          </div>
-        ))}
+          ))}
 
-        {filteredFixtures.length === 0 && (
-          <div className="py-16 text-center">
-            <Zap className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
-            <p className="text-muted-foreground">No matches found</p>
-          </div>
-        )}
-      </div>
+          {!isLoading && filteredFixtures.length === 0 && (
+            <div className="py-16 text-center">
+              <Zap className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+              <p className="text-muted-foreground">No matches found</p>
+            </div>
+          )}
+        </div>
+      )}
     </Layout>
   );
 };

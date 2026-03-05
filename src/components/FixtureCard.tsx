@@ -1,9 +1,9 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Calendar, MapPin, ChevronRight } from "lucide-react";
-import type { Fixture } from "@/data/mockData";
+import type { UIFixture } from "@/lib/types";
 
-const FixtureCard = ({ fixture, index }: { fixture: Fixture; index: number }) => {
+const FixtureCard = ({ fixture, index }: { fixture: UIFixture; index: number }) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -29,7 +29,7 @@ const FixtureCard = ({ fixture, index }: { fixture: Fixture; index: number }) =>
                   {fixture.homeTeam.name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  #{fixture.homeTeam.leaguePosition}
+                  {fixture.homeTeam.leaguePosition != null ? `#${fixture.homeTeam.leaguePosition}` : ""}
                 </p>
               </div>
             </div>
@@ -56,7 +56,7 @@ const FixtureCard = ({ fixture, index }: { fixture: Fixture; index: number }) =>
                   {fixture.awayTeam.name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  #{fixture.awayTeam.leaguePosition}
+                  {fixture.awayTeam.leaguePosition != null ? `#${fixture.awayTeam.leaguePosition}` : ""}
                 </p>
               </div>
             </div>

@@ -1,4 +1,4 @@
-import type { TeamInfo } from "@/data/mockData";
+import type { UITeamDetail } from "@/lib/types";
 
 // Maps formation string to rows of player counts (excluding GK)
 function getFormationRows(formation: string): number[] {
@@ -6,7 +6,7 @@ function getFormationRows(formation: string): number[] {
 }
 
 // Place players into rows based on formation
-function arrangePlayers(team: TeamInfo) {
+function arrangePlayers(team: UITeamDetail) {
   const gk = team.startingXI.find((p) => p.position === "GK");
   const outfield = team.startingXI.filter((p) => p.position !== "GK");
   const rows = getFormationRows(team.formation);
@@ -21,7 +21,7 @@ function arrangePlayers(team: TeamInfo) {
   return { gk, rows: arranged };
 }
 
-const PitchFormation = ({ team }: { team: TeamInfo }) => {
+const PitchFormation = ({ team }: { team: UITeamDetail }) => {
   const { gk, rows } = arrangePlayers(team);
 
   return (

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -9,43 +9,97 @@ import {
   Swords,
   Sparkles,
   Loader2,
+  BookmarkPlus,
+  Check,
 } from "lucide-react";
-import { fixtures } from "@/data/mockData";
+import { useQuery } from "@tanstack/react-query";
+import * as api from "@/lib/api";
+import type { UITeamDetail, H2HRecord, UserPrediction, FormResult } from "@/lib/types";
+import { useAuth } from "@/context/AuthContext";
 import Layout from "@/components/Layout";
 import FormBadge from "@/components/FormBadge";
 import PitchFormation from "@/components/PitchFormation";
 import PredictionCard from "@/components/PredictionCard";
 import { Button } from "@/components/ui/button";
 
-// TODO: call Claude API for prediction — replace mock with real API call
-const mockPredictions: Record<string, { home: number; away: number; confidence: number; reasoning: string; bet: string }> = {
-  "1": { home: 2, away: 1, confidence: 72, reasoning: "Arsenal's strong home form and defensive solidity gives them the edge. Chelsea's away record has been inconsistent, and with Reece James out, their right flank is vulnerable. Expect Arsenal to control possession and create more chances through the left side.", bet: "Home Win & Over 1.5 Goals" },
-  "2": { home: 2, away: 2, confidence: 58, reasoning: "Both sides are in exceptional form. Liverpool's Anfield fortress is hard to crack, but City's quality makes a draw the most likely result. De Bruyne's absence weakens City's creativity, but Haaland remains a constant threat.", bet: "Both Teams to Score" },
-  "3": { home: 1, away: 2, confidence: 65, reasoning: "Newcastle's recent form is significantly better than United's. The visitors have won 4 of their last 5 and United's midfield struggles will be exposed by Guimarães and Tonali.", bet: "Away Win" },
-  "4": { home: 3, away: 2, confidence: 61, reasoning: "El Clásico at the Bernabéu favors Real Madrid historically. Mbappé and Vinícius Jr create nightmare scenarios for any defense. Barcelona without Pedri lose creativity in midfield, though Yamal remains dangerous.", bet: "Over 3.5 Goals" },
-  "5": { home: 1, away: 1, confidence: 55, reasoning: "Madrid derbies are typically tight affairs. Atlético's defensive organization at home is elite, but Real's quality should be enough for a goal. Expect a cagey tactical battle.", bet: "Under 2.5 Goals" },
-  "6": { home: 1, away: 2, confidence: 68, reasoning: "Inter's form is dominant — 4 wins in 5. Their 3-5-2 system has been clinical this season. Milan will fight in the derby, but Inter's midfield of Barella, Çalhanoğlu, and Mkhitaryan is a class above.", bet: "Away Win" },
-  "7": { home: 1, away: 0, confidence: 63, reasoning: "Juventus have been defensively solid, conceding very few at the Allianz Stadium. Milan's away form has been mixed. Expect Juve to grind out a narrow win.", bet: "Home Win & Under 2.5 Goals" },
-  "8": { home: 3, away: 1, confidence: 75, reasoning: "Bayern at home are virtually unstoppable. Kane has been in sensational form and Musiala adds creativity. Dortmund will struggle without Haller to hold the ball up against Bayern's press.", bet: "Home Win & Over 2.5 Goals" },
-  "9": { home: 2, away: 2, confidence: 52, reasoning: "An evenly matched contest. Leipzig's home form is decent but inconsistent. Dortmund's quality in attack should ensure goals at both ends.", bet: "Both Teams to Score" },
-  "10": { home: 3, away: 0, confidence: 78, reasoning: "PSG have been dominant in Le Classique recently. With Dembélé in sparkling form and Marseille missing Harit, this looks like a comfortable home win at the Parc des Princes.", bet: "Home Win to Nil" },
-  "11": { home: 2, away: 2, confidence: 50, reasoning: "Olympique derbies are unpredictable. Both sides are competitive but inconsistent. Lyon's home support will be a factor, but Marseille have the squad depth to compete.", bet: "Draw" },
-  "12": { home: 1, away: 1, confidence: 54, reasoning: "Without Son, Spurs lose their main creative threat. Aston Villa's well-organized defence under Emery will frustrate the home side. A cagey draw seems the most likely outcome.", bet: "Draw" },
-};
-
 const MatchPrediction = () => {
   const { id } = useParams<{ id: string }>();
-  const [showPrediction, setShowPrediction] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const fixtureId = parseInt(id ?? "0", 10);
+  const { token } = useAuth();
+  const navigate = useNavigate();
 
-  const fixture = fixtures.find((f) => f.id === id);
+  const [prediction, setPrediction] = useState<UserPrediction | null>(null);
+  const [predLoading, setPredLoading] = useState(false);
+  const [predError, setPredError] = useState("");
+
+  const [slipLoading, setSlipLoading] = useState(false);
+  const [slipAdded, setSlipAdded] = useState(false);
+  const [slipError, setSlipError] = useState("");
+
+  const { data: remaining, refetch: refetchRemaining } = useQuery({
+    queryKey: ["remaining", token],
+    queryFn: () => api.fetchRemainingPredictions(token!),
+    enabled: !!token,
+    staleTime: 0,
+  });
+
+  // 1. Fetch fixture basic info
+  const { data: fixture, isLoading: fixtureLoading } = useQuery({
+    queryKey: ["fixture", fixtureId],
+    queryFn: () => api.fetchFixture(fixtureId),
+    enabled: !!fixtureId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const homeId = fixture?.homeTeam.id;
+  const awayId = fixture?.awayTeam.id;
+  const leagueCode = api.LEAGUES.find((l) => l.name === fixture?.league)?.code;
+
+  // 2. Parallel dependent queries
+  const { data: homeForm = [] } = useQuery({
+    queryKey: ["form", homeId],
+    queryFn: () => api.fetchTeamForm(homeId!),
+    enabled: !!homeId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: awayForm = [] } = useQuery({
+    queryKey: ["form", awayId],
+    queryFn: () => api.fetchTeamForm(awayId!),
+    enabled: !!awayId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: standings = [] } = useQuery({
+    queryKey: ["standings", leagueCode],
+    queryFn: () => api.fetchStandings(leagueCode!),
+    enabled: !!leagueCode,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const { data: h2h = [] } = useQuery({
+    queryKey: ["h2h", fixtureId],
+    queryFn: () => api.fetchMatchH2H(fixtureId),
+    enabled: !!fixtureId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (fixtureLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!fixture) {
     return (
       <Layout>
         <div className="py-20 text-center">
           <p className="text-muted-foreground">Match not found</p>
-          <Link to="/" className="mt-4 inline-block text-primary hover:underline">
+          <Link to="/fixtures" className="mt-4 inline-block text-primary hover:underline">
             Back to matches
           </Link>
         </div>
@@ -53,36 +107,86 @@ const MatchPrediction = () => {
     );
   }
 
-  const prediction = mockPredictions[fixture.id] || mockPredictions["1"];
+  const homePosition = standings.find((s) => s.teamId === homeId)?.position ?? null;
+  const awayPosition = standings.find((s) => s.teamId === awayId)?.position ?? null;
 
-  const handleGeneratePrediction = () => {
-    setLoading(true);
-    // TODO: call Claude API for prediction
-    setTimeout(() => {
-      setLoading(false);
-      setShowPrediction(true);
-    }, 1500);
+  const homeTeamDetail: UITeamDetail = {
+    ...fixture.homeTeam,
+    leaguePosition: homePosition,
+    form: homeForm as FormResult[],
+    injuries: [],
+    formation: "4-4-2",
+    startingXI: [],
+  };
+
+  const awayTeamDetail: UITeamDetail = {
+    ...fixture.awayTeam,
+    leaguePosition: awayPosition,
+    form: awayForm as FormResult[],
+    injuries: [],
+    formation: "4-4-2",
+    startingXI: [],
   };
 
   // H2H stats
-  const homeWins = fixture.h2h.filter(
+  const homeWins = (h2h as H2HRecord[]).filter(
     (h) =>
       (h.homeTeam === fixture.homeTeam.name && h.homeGoals > h.awayGoals) ||
       (h.awayTeam === fixture.homeTeam.name && h.awayGoals > h.homeGoals)
   ).length;
-  const awayWins = fixture.h2h.filter(
+  const awayWins = (h2h as H2HRecord[]).filter(
     (h) =>
       (h.homeTeam === fixture.awayTeam.name && h.homeGoals > h.awayGoals) ||
       (h.awayTeam === fixture.awayTeam.name && h.awayGoals > h.homeGoals)
   ).length;
-  const draws = fixture.h2h.filter((h) => h.homeGoals === h.awayGoals).length;
-  const totalGoals = fixture.h2h.reduce((s, h) => s + h.homeGoals + h.awayGoals, 0);
+  const draws = (h2h as H2HRecord[]).filter((h) => h.homeGoals === h.awayGoals).length;
+  const totalGoals = (h2h as H2HRecord[]).reduce((s, h) => s + h.homeGoals + h.awayGoals, 0);
+  const h2hCount = h2h.length || 1;
+
+  const handleAddToSlip = async () => {
+    if (!token || !prediction) return;
+    setSlipError("");
+    setSlipLoading(true);
+    try {
+      const slips = await api.fetchMySlips(token);
+      let slipId: number;
+      if (slips.length > 0) {
+        slipId = slips[0].id;
+      } else {
+        const newSlip = await api.createSlip("My Slip", token);
+        slipId = newSlip.id;
+      }
+      await api.addToSlip(slipId, prediction.id, 1, token);
+      setSlipAdded(true);
+    } catch (err) {
+      setSlipError(err instanceof Error ? err.message : "Failed to add to slip");
+    } finally {
+      setSlipLoading(false);
+    }
+  };
+
+  const handleGeneratePrediction = async () => {
+    if (!token) {
+      navigate("/login");
+      return;
+    }
+    setPredError("");
+    setPredLoading(true);
+    try {
+      const pred = await api.createPrediction(fixtureId, token);
+      setPrediction(pred);
+      refetchRemaining();
+    } catch (err) {
+      setPredError(err instanceof Error ? err.message : "Failed to generate prediction");
+    } finally {
+      setPredLoading(false);
+    }
+  };
 
   return (
     <Layout>
-      {/* Back button */}
       <Link
-        to="/"
+        to="/fixtures"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -102,9 +206,7 @@ const MatchPrediction = () => {
               src={fixture.homeTeam.logo}
               alt={fixture.homeTeam.name}
               className="h-20 w-20 object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = "/placeholder.svg";
-              }}
+              onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
             />
             <h2 className="font-display text-2xl font-bold text-foreground">
               {fixture.homeTeam.name}
@@ -118,17 +220,11 @@ const MatchPrediction = () => {
                 src={fixture.leagueLogo}
                 alt={fixture.league}
                 className="h-6 w-6 object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = "/placeholder.svg";
-                }}
+                onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
               />
-              <span className="text-sm font-medium text-muted-foreground">
-                {fixture.league}
-              </span>
+              <span className="text-sm font-medium text-muted-foreground">{fixture.league}</span>
             </div>
-            <span className="font-display text-3xl font-bold text-muted-foreground">
-              VS
-            </span>
+            <span className="font-display text-3xl font-bold text-muted-foreground">VS</span>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
@@ -147,22 +243,19 @@ const MatchPrediction = () => {
               src={fixture.awayTeam.logo}
               alt={fixture.awayTeam.name}
               className="h-20 w-20 object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = "/placeholder.svg";
-              }}
+              onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
             />
             <h2 className="font-display text-2xl font-bold text-foreground">
               {fixture.awayTeam.name}
             </h2>
           </div>
         </div>
-
         <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/5 blur-3xl" />
       </motion.div>
 
       {/* Team Panels */}
       <div className="mb-8 grid gap-6 lg:grid-cols-2">
-        {[fixture.homeTeam, fixture.awayTeam].map((team, idx) => (
+        {[homeTeamDetail, awayTeamDetail].map((team, idx) => (
           <motion.div
             key={team.name}
             initial={{ opacity: 0, x: idx === 0 ? -20 : 20 }}
@@ -175,16 +268,9 @@ const MatchPrediction = () => {
                 src={team.logo}
                 alt={team.name}
                 className="h-8 w-8 object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = "/placeholder.svg";
-                }}
+                onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
               />
-              <h3 className="font-display text-lg font-semibold text-foreground">
-                {team.name}
-              </h3>
-              <span className="ml-auto rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                #{team.leaguePosition}
-              </span>
+              <h3 className="font-display text-lg font-semibold text-foreground">{team.name}</h3>
             </div>
 
             <div className="space-y-5 p-5">
@@ -193,11 +279,15 @@ const MatchPrediction = () => {
                 <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Last 5 Form
                 </p>
-                <div className="flex gap-1.5">
-                  {team.form.map((r, i) => (
-                    <FormBadge key={i} result={r} />
-                  ))}
-                </div>
+                {team.form.length > 0 ? (
+                  <div className="flex gap-1.5">
+                    {team.form.map((r, i) => (
+                      <FormBadge key={i} result={r} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Loading...</p>
+                )}
               </div>
 
               {/* Injuries */}
@@ -227,7 +317,11 @@ const MatchPrediction = () => {
                 <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Likely Starting XI
                 </p>
-                <PitchFormation team={team} />
+                {team.startingXI.length > 0 ? (
+                  <PitchFormation team={team} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">Lineup not yet announced</p>
+                )}
               </div>
             </div>
           </motion.div>
@@ -243,82 +337,88 @@ const MatchPrediction = () => {
       >
         <div className="flex items-center gap-2 border-b border-border/50 px-5 py-3">
           <Swords className="h-4 w-4 text-primary" />
-          <h3 className="font-display text-lg font-semibold text-foreground">
-            Head to Head
-          </h3>
+          <h3 className="font-display text-lg font-semibold text-foreground">Head to Head</h3>
         </div>
 
         <div className="p-5">
-          {/* Summary stats */}
-          <div className="mb-5 grid grid-cols-4 gap-3">
-            {[
-              { label: `${fixture.homeTeam.shortName} Wins`, value: homeWins, color: "text-primary" },
-              { label: "Draws", value: draws, color: "text-draw" },
-              { label: `${fixture.awayTeam.shortName} Wins`, value: awayWins, color: "text-secondary" },
-              { label: "Avg Goals", value: (totalGoals / fixture.h2h.length).toFixed(1), color: "text-foreground" },
-            ].map((stat) => (
-              <div key={stat.label} className="rounded-lg bg-muted/30 p-3 text-center">
-                <p className={`font-display text-2xl font-bold ${stat.color}`}>
-                  {stat.value}
-                </p>
-                <p className="text-[10px] text-muted-foreground">{stat.label}</p>
+          {h2h.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No H2H data available</p>
+          ) : (
+            <>
+              <div className="mb-5 grid grid-cols-4 gap-3">
+                {[
+                  { label: `${fixture.homeTeam.shortName} Wins`, value: homeWins, color: "text-primary" },
+                  { label: "Draws", value: draws, color: "text-draw" },
+                  { label: `${fixture.awayTeam.shortName} Wins`, value: awayWins, color: "text-secondary" },
+                  { label: "Avg Goals", value: (totalGoals / h2hCount).toFixed(1), color: "text-foreground" },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-lg bg-muted/30 p-3 text-center">
+                    <p className={`font-display text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+                    <p className="text-[10px] text-muted-foreground">{stat.label}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {/* H2H win ratio bar */}
-          <div className="mb-5">
-            <div className="flex h-3 overflow-hidden rounded-full">
-              <div
-                className="bg-primary transition-all"
-                style={{ width: `${(homeWins / fixture.h2h.length) * 100}%` }}
-              />
-              <div
-                className="bg-draw transition-all"
-                style={{ width: `${(draws / fixture.h2h.length) * 100}%` }}
-              />
-              <div
-                className="bg-secondary transition-all"
-                style={{ width: `${(awayWins / fixture.h2h.length) * 100}%` }}
-              />
-            </div>
-          </div>
-
-          {/* H2H Results */}
-          <div className="space-y-2">
-            {fixture.h2h.map((match, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between rounded-lg bg-muted/20 px-4 py-2.5 text-sm"
-              >
-                <span className="text-xs text-muted-foreground">{match.date}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`font-medium ${match.homeTeam === fixture.homeTeam.name ? "text-foreground" : "text-muted-foreground"}`}>
-                    {match.homeTeam}
-                  </span>
-                  <span className="rounded bg-muted px-2 py-0.5 font-display font-bold text-foreground">
-                    {match.homeGoals} - {match.awayGoals}
-                  </span>
-                  <span className={`font-medium ${match.awayTeam === fixture.homeTeam.name ? "text-foreground" : "text-muted-foreground"}`}>
-                    {match.awayTeam}
-                  </span>
+              <div className="mb-5">
+                <div className="flex h-3 overflow-hidden rounded-full">
+                  <div className="bg-primary transition-all" style={{ width: `${(homeWins / h2hCount) * 100}%` }} />
+                  <div className="bg-draw transition-all" style={{ width: `${(draws / h2hCount) * 100}%` }} />
+                  <div className="bg-secondary transition-all" style={{ width: `${(awayWins / h2hCount) * 100}%` }} />
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="space-y-2">
+                {(h2h as H2HRecord[]).map((match, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between rounded-lg bg-muted/20 px-4 py-2.5 text-sm"
+                  >
+                    <span className="text-xs text-muted-foreground">{match.date}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-medium ${match.homeTeam === fixture.homeTeam.name ? "text-foreground" : "text-muted-foreground"}`}>
+                        {match.homeTeam}
+                      </span>
+                      <span className="rounded bg-muted px-2 py-0.5 font-display font-bold text-foreground">
+                        {match.homeGoals} - {match.awayGoals}
+                      </span>
+                      <span className={`font-medium ${match.awayTeam === fixture.homeTeam.name ? "text-foreground" : "text-muted-foreground"}`}>
+                        {match.awayTeam}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </motion.div>
 
       {/* Generate Prediction */}
       <div className="mb-8">
-        {!showPrediction && (
+        {!prediction && (
           <div className="text-center">
+            {!token && (
+              <p className="mb-3 text-sm text-muted-foreground">
+                <Link to="/login" className="text-primary hover:underline">Sign in</Link> to generate an AI prediction
+              </p>
+            )}
+            {token && remaining && (
+              <p className="mb-3 text-sm text-muted-foreground">
+                <span className={remaining.remaining === 0 ? "text-loss font-medium" : "text-foreground font-medium"}>
+                  {remaining.remaining}
+                </span>
+                {" "}of {remaining.limit} predictions remaining today
+              </p>
+            )}
+            {predError && (
+              <p className="mb-3 rounded-lg bg-loss/10 px-4 py-2 text-sm text-loss">{predError}</p>
+            )}
             <Button
               onClick={handleGeneratePrediction}
-              disabled={loading}
+              disabled={predLoading || (!!token && remaining?.remaining === 0)}
               className="h-12 gap-2 rounded-xl bg-primary px-8 font-display text-base font-semibold text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.3)] hover:bg-primary/90 hover:shadow-[0_0_30px_hsl(var(--primary)/0.4)]"
             >
-              {loading ? (
+              {predLoading ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
                   Analyzing match data...
@@ -333,16 +433,42 @@ const MatchPrediction = () => {
           </div>
         )}
 
-        {showPrediction && (
-          <PredictionCard
-            homeTeam={fixture.homeTeam.name}
-            awayTeam={fixture.awayTeam.name}
-            predictedHome={prediction.home}
-            predictedAway={prediction.away}
-            confidence={prediction.confidence}
-            reasoning={prediction.reasoning}
-            suggestedBet={prediction.bet}
-          />
+        {prediction && (
+          <>
+            <PredictionCard
+              homeTeam={fixture.homeTeam.name}
+              awayTeam={fixture.awayTeam.name}
+              predictedHome={prediction.predicted_home_score}
+              predictedAway={prediction.predicted_away_score}
+              confidence={prediction.confidence}
+              reasoning={prediction.reasoning}
+              suggestedBet={prediction.suggested_bet}
+            />
+
+            <div className="mt-4 rounded-xl border border-border/50 bg-card p-4">
+              <p className="mb-1 text-sm font-medium text-foreground">Add to Betting Slip</p>
+              <p className="mb-3 text-xs text-muted-foreground">Prediction will be added to your slip. Set your total stake on the slip page.</p>
+              {slipAdded ? (
+                <div className="flex items-center gap-2 text-sm text-primary">
+                  <Check className="h-4 w-4" />
+                  Added to slip!{" "}
+                  <Link to="/slip" className="underline hover:text-primary/80">View slip</Link>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleAddToSlip}
+                    disabled={slipLoading}
+                    className="flex items-center gap-2 rounded-lg bg-secondary/20 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary/30 disabled:opacity-50"
+                  >
+                    {slipLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookmarkPlus className="h-4 w-4" />}
+                    Add to Slip
+                  </button>
+                  {slipError && <p className="text-xs text-loss">{slipError}</p>}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </Layout>
