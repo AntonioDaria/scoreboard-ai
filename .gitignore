@@ -33,3 +33,5 @@ __pycache__
 
 # Testing
 .pytest_cache
+backend/.venv/
+backend/__pycache__/
