@@ -1,6 +1,19 @@
-# Scoreboard AI — Football Match Score Prediction App
+# PredictXI — AI-Powered Football Match Prediction App
 
-A full-stack app that uses Claude AI to generate football match predictions, confidence scores, reasoning, and suggested bets. Built with React + Tailwind CSS on the frontend and FastAPI + PostgreSQL on the backend.
+A full-stack app that uses Claude AI to generate football match predictions, confidence scores, detailed reasoning, and suggested bets. Built with React + Tailwind CSS on the frontend and FastAPI + PostgreSQL on the backend.
+
+---
+
+## Features
+
+- **AI Predictions** — Claude Sonnet analyses recent form, league standings, head-to-head history, and injury data to predict scores and suggest bets
+- **Injury & Suspension Data** — scraped live from Transfermarkt before each prediction
+- **Announced Lineups** — fetched from ESPN's API and displayed as a pitch formation once announced (~45 min before kickoff)
+- **Result Tracking** — predictions are automatically evaluated once a match finishes; correct/incorrect status is updated in the background
+- **Compound Bet Evaluation** — supports Home Win, Away Win, Draw, BTTS, Over/Under X.5 Goals, Clean Sheet, and combinations (e.g. "Home Win & Both Teams to Score")
+- **Betting Slips** — group predictions into a slip, set a total stake, and see potential returns
+- **Prediction History** — view all your predictions with actual scores and win/loss stats
+- **Daily Limit** — 5 predictions per user per day
 
 ---
 
@@ -12,9 +25,11 @@ A full-stack app that uses Claude AI to generate football match predictions, con
 | Backend | Python 3.11, FastAPI, SQLAlchemy, Alembic |
 | Database | PostgreSQL 15 |
 | AI | Anthropic Claude (`claude-sonnet-4-6`) |
-| Football Data | API-Football (v3) |
+| Football Data | football-data.org (v4) |
+| Lineups | ESPN public API |
+| Injury Data | Transfermarkt (scraped via httpx) |
 | Auth | JWT (python-jose + bcrypt) |
-| Tests | pytest, pytest-asyncio |
+| Tests | pytest |
 | Containers | Docker, Docker Compose |
 
 ---
@@ -24,9 +39,12 @@ A full-stack app that uses Claude AI to generate football match predictions, con
 ```
 scoreboard-ai/
 ├── src/                        # React frontend (Vite)
+│   ├── pages/                  # Index, MatchPrediction, History, BettingSlip, Login
+│   ├── components/             # Layout, PredictionCard, PitchFormation, FormBadge, etc.
+│   ├── context/                # AuthContext (JWT decode, logout event)
+│   └── lib/                    # api.ts, types.ts
 ├── backend/
 │   ├── main.py                 # FastAPI app entry point
-│   ├── requirements.txt
 │   ├── Dockerfile
 │   ├── .env                    # Local env vars (gitignored)
 │   ├── .env.example
@@ -34,17 +52,17 @@ scoreboard-ai/
 │   └── app/
 │       ├── controllers/        # Route handlers (thin layer)
 │       ├── services/           # Business logic
-│       ├── adapters/           # External API calls (API-Football, Claude)
+│       ├── adapters/           # External API calls
+│       │   ├── football_data_adapter.py   # football-data.org v4
+│       │   ├── claude_adapter.py          # Anthropic Claude + Transfermarkt injuries
+│       │   ├── transfermarkt_adapter.py   # Transfermarkt lineup scraper (fallback)
+│       │   └── espn_adapter.py            # ESPN lineup API
 │       ├── models/             # SQLAlchemy models
 │       ├── schemas/            # Pydantic request/response schemas
 │       ├── db/                 # Database connection setup
 │       └── tests/
 │           ├── conftest.py
-│           ├── seeders/
-│           ├── unit/
-│           └── integration/
-├── docker/
-│   └── init-db.sql             # Creates test database on first run
+│           └── unit/
 ├── docker-compose.yml
 └── Dockerfile.frontend
 ```
@@ -71,16 +89,18 @@ cp backend/.env.example backend/.env
 Edit `backend/.env`:
 
 ```env
-API_FOOTBALL_KEY=your_api_football_key_here       # https://www.api-football.com
+FOOTBALL_DATA_KEY=your_football_data_key_here     # https://www.football-data.org (free tier)
 ANTHROPIC_API_KEY=your_claude_key_here            # https://console.anthropic.com
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/football_predictions
 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/football_predictions_test
 SECRET_KEY=your_jwt_secret_here                   # Run: openssl rand -hex 32
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=10080                 # 7 days
 ```
 
 > `DATABASE_URL` and `TEST_DATABASE_URL` are pre-configured to match the Docker Compose Postgres service. Only change these if running Postgres manually with different credentials.
+
+> ESPN and Transfermarkt are scraped without API keys — no extra setup needed.
 
 ---
 
@@ -136,7 +156,7 @@ Frontend available at http://localhost:5173.
 
 ### Backend
 
-Install dependencies with Poetry (creates and manages the virtualenv automatically):
+Install dependencies with Poetry:
 
 ```bash
 cd backend
@@ -172,20 +192,20 @@ Backend available at http://localhost:8000.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/fixtures?league_id=&season=` | Get fixtures for a league/season |
-| GET | `/standings?league_id=&season=` | Get league standings |
-| GET | `/team/{team_id}/form` | Get recent team form |
-| GET | `/fixture/{fixture_id}/injuries` | Get injuries for a fixture |
-| GET | `/fixture/{fixture_id}/lineup` | Get lineups for a fixture |
-| GET | `/h2h?team1={id}&team2={id}` | Head-to-head history |
-| GET | `/fixture/{fixture_id}/odds` | Real-time odds |
+| GET | `/fixtures?competition_code=PL&status=SCHEDULED&limit=10` | Upcoming fixtures for a competition |
+| GET | `/fixture/{match_id}` | Single match details |
+| GET | `/h2h/{match_id}?limit=5` | Head-to-head history for a fixture |
+| GET | `/standings/{competition_code}` | League standings |
+| GET | `/team/{team_id}/form?limit=5` | Recent team form (last N finished matches) |
+| GET | `/lineups?home_team=Arsenal FC&away_team=Chelsea FC&match_date=20260308&competition_code=PL` | Announced starting lineups from ESPN |
 
 ### Predictions (JWT required)
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/predictions` | Generate and save a prediction |
-| GET | `/predictions` | Get all predictions for current user |
+| POST | `/predictions` | Generate and save an AI prediction |
+| GET | `/predictions` | Get all predictions for the current user |
+| GET | `/predictions/remaining` | Remaining predictions for today |
 | GET | `/predictions/{id}` | Get a single prediction |
 
 ### Betting Slips (JWT required)
@@ -193,9 +213,9 @@ Backend available at http://localhost:8000.
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | `/slips` | Create a new betting slip |
+| GET | `/slips` | Get all slips for the current user |
+| GET | `/slips/{slip_id}` | Get a slip with its items |
 | POST | `/slips/{slip_id}/items` | Add a prediction to a slip |
-| GET | `/slips/{slip_id}` | Get slip with real-time odds refresh |
-| GET | `/slips/{slip_id}/export` | Export slip as shareable JSON |
 
 ### Health
 
@@ -205,9 +225,19 @@ Backend available at http://localhost:8000.
 
 ---
 
-## Dependency Management (Poetry)
+## Supported Competitions
 
-Dependencies are declared in `backend/pyproject.toml` and pinned in `backend/poetry.lock`.
+| Code | Competition |
+|---|---|
+| `PL` | Premier League |
+| `PD` | La Liga |
+| `SA` | Serie A |
+| `BL1` | Bundesliga |
+| `FL1` | Ligue 1 |
+
+---
+
+## Dependency Management (Poetry)
 
 ```bash
 # Install all dependencies (including dev)
@@ -219,23 +249,15 @@ poetry add <package>
 # Add a dev-only dependency
 poetry add --group dev <package>
 
-# Remove a dependency
-poetry remove <package>
-
-# Update all dependencies to latest allowed versions
+# Update all dependencies
 poetry update
-
-# Show installed packages
-poetry show
 ```
 
-> Always commit both `pyproject.toml` and `poetry.lock` together so everyone gets the same resolved versions.
+> Always commit both `pyproject.toml` and `poetry.lock` together.
 
 ---
 
 ## Database Migrations
-
-Create a new migration after changing models:
 
 ```bash
 cd backend
@@ -262,38 +284,11 @@ poetry run pytest app/tests/unit/ -v
 
 ### All tests including integration (requires Postgres)
 
-Start the database first:
-
 ```bash
 docker-compose up -d db
-```
-
-Then run:
-
-```bash
 cd backend
 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/football_predictions_test \
 poetry run pytest app/tests/ -v
-```
-
-### Test structure
-
-```
-tests/
-├── conftest.py               # DB fixture: spin up, seed, rollback per test
-├── seeders/
-│   ├── seed_users.py
-│   ├── seed_fixtures.py
-│   ├── seed_predictions.py
-│   └── seed_slips.py
-├── unit/
-│   ├── adapters/             # Mock HTTP calls to API-Football and Claude
-│   ├── services/             # Mock all external dependencies
-│   └── controllers/         # TestClient with mocked services
-└── integration/
-    ├── test_auth_flow.py     # Register → login → token
-    ├── test_prediction_flow.py
-    └── test_betting_slip_flow.py
 ```
 
 ---
@@ -305,8 +300,10 @@ Request → Controller (route handler)
               ↓
           Service (business logic)
               ↓
-     Adapter (external APIs)   ←→   API-Football
-     Adapter (Claude AI)       ←→   Anthropic Claude
+     football_data_adapter   ←→   football-data.org v4
+     claude_adapter          ←→   Anthropic Claude API
+     claude_adapter          ←→   Transfermarkt (injury scraping)
+     espn_adapter            ←→   ESPN public API (lineups)
               ↓
           Model / DB (SQLAlchemy + PostgreSQL)
 ```
@@ -314,13 +311,14 @@ Request → Controller (route handler)
 - **Controllers** are thin — they only parse requests and delegate to services.
 - **Services** own all business logic and orchestrate calls between adapters and models.
 - **Adapters** are the only files that make outbound HTTP calls, making them easy to mock in tests.
+- **Result checking** runs in a background thread on `GET /predictions` so it never blocks the response.
 
 ---
 
-## What to Fill In Manually
+## What to Fill In
 
 | Item | Action |
 |---|---|
-| `API_FOOTBALL_KEY` | Sign up at https://www.api-football.com and paste your key in `backend/.env` |
+| `FOOTBALL_DATA_KEY` | Sign up (free) at https://www.football-data.org and paste your key in `backend/.env` |
 | `ANTHROPIC_API_KEY` | Get your key from https://console.anthropic.com and paste it in `backend/.env` |
 | `SECRET_KEY` | Generate with `openssl rand -hex 32` and paste in `backend/.env` |

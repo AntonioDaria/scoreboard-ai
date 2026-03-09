@@ -16,7 +16,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { token, logout } = useAuth();
+  const { token, email, logout } = useAuth();
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -83,7 +83,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                   onClick={() => setDropdownOpen((o) => !o)}
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/30 transition-colors hover:bg-primary/20"
                 >
-                  <User className="h-4 w-4 text-primary" />
+                  {email ? (
+                    <span className="text-sm font-bold text-primary">{email[0].toUpperCase()}</span>
+                  ) : (
+                    <User className="h-4 w-4 text-primary" />
+                  )}
                 </button>
 
                 <AnimatePresence>
@@ -95,8 +99,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                       transition={{ duration: 0.12 }}
                       className="absolute right-0 mt-2 w-44 overflow-hidden rounded-xl border border-border/50 bg-card shadow-xl"
                     >
-                      <div className="px-4 py-2.5 text-xs font-medium text-muted-foreground border-b border-border/50">
-                        Signed in
+                      <div className="px-4 py-2.5 border-b border-border/50">
+                        <p className="text-xs font-medium text-muted-foreground">Signed in as</p>
+                        {email && <p className="text-xs text-foreground truncate mt-0.5">{email}</p>}
                       </div>
                       <button
                         onClick={handleLogout}

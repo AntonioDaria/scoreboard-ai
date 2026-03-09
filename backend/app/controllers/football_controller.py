@@ -31,3 +31,13 @@ def standings(competition_code: str):
 @router.get("/team/{team_id}/form")
 def team_form(team_id: int, limit: int = Query(5)):
     return football_service.fetch_team_form(team_id, limit=limit)
+
+
+@router.get("/lineups")
+def lineups(
+    home_team: str = Query(...),
+    away_team: str = Query(...),
+    match_date: str = Query(...),
+    competition_code: str = Query(None),
+):
+    return football_service.fetch_lineups(home_team, away_team, match_date, competition_code)

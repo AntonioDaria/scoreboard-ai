@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Text
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Text, JSON
 from sqlalchemy.orm import relationship
 from app.db.database import Base
 
@@ -19,5 +19,10 @@ class Prediction(Base):
     reasoning = Column(Text, nullable=False)
     suggested_bet = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    actual_home_score = Column(Integer, nullable=True)
+    actual_away_score = Column(Integer, nullable=True)
+    result = Column(String, nullable=False, default="pending")  # pending | correct | incorrect
+    home_injuries = Column(JSON, nullable=True, default=list)
+    away_injuries = Column(JSON, nullable=True, default=list)
 
     user = relationship("User", backref="predictions")

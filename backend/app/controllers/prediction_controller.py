@@ -1,10 +1,12 @@
+import threading
+
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
+from app.db.database import get_db, SessionLocal
 from app.schemas.prediction_schemas import PredictionCreate, PredictionResponse
-from app.services import prediction_service, auth_service
+from app.services import prediction_service, auth_service, result_checker_service
 
 router = APIRouter()
 bearer = HTTPBearer()
@@ -24,8 +26,20 @@ def remaining_predictions(user=Depends(_current_user), db: Session = Depends(get
     return prediction_service.get_remaining_predictions(user.id, db)
 
 
+def _check_results_background():
+    """Run result checker in a background thread with its own DB session."""
+    db = SessionLocal()
+    try:
+        result_checker_service.check_pending_predictions(db)
+    except Exception as e:
+        print(f"[result_checker] background error: {e}")
+    finally:
+        db.close()
+
+
 @router.get("", response_model=list[PredictionResponse])
 def list_predictions(user=Depends(_current_user), db: Session = Depends(get_db)):
+    threading.Thread(target=_check_results_background, daemon=True).start()
     return prediction_service.get_user_predictions(user.id, db)
 
 

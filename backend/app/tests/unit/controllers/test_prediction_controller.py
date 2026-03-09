@@ -20,6 +20,9 @@ MOCK_PREDICTION = MagicMock(
     reasoning="Strong form.",
     suggested_bet="Home Win",
     created_at=datetime.utcnow(),
+    actual_home_score=None,
+    actual_away_score=None,
+    result="pending",
 )
 
 
@@ -33,7 +36,8 @@ def test_create_prediction():
 
 def test_list_predictions():
     app.dependency_overrides[_current_user] = lambda: MOCK_USER
-    with patch("app.controllers.prediction_controller.prediction_service.get_user_predictions", return_value=[MOCK_PREDICTION]):
+    with patch("app.controllers.prediction_controller.prediction_service.get_user_predictions", return_value=[MOCK_PREDICTION]), \
+         patch("app.controllers.prediction_controller.result_checker_service.check_pending_predictions", return_value=0):
         response = client.get("/predictions")
     app.dependency_overrides.clear()
     assert response.status_code == 200

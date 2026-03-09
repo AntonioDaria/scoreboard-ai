@@ -1,7 +1,9 @@
 import os
+import re
 import json
 import random
 import anthropic
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -88,34 +90,137 @@ def _statistical_prediction(match_context: dict) -> dict:
     }
 
 
+def _extract_json(text: str) -> dict:
+    raw = text.strip()
+    # Strip markdown fences
+    if "```" in raw:
+        parts = raw.split("```")
+        for part in parts:
+            candidate = part.lstrip("json").strip()
+            if candidate.startswith("{"):
+                raw = candidate
+                break
+    # Find the JSON object even if there's narrative text around it
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+    if start != -1 and end > start:
+        raw = raw[start:end]
+    result = json.loads(raw)
+    result.setdefault("home_injuries", [])
+    result.setdefault("away_injuries", [])
+    return result
+
+
+_TM_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+
+def _transfermarkt_injuries(team_name: str) -> list[str]:
+    """Scrape current injury/suspension list from Transfermarkt for a team."""
+    try:
+        with httpx.Client(follow_redirects=True, timeout=10, headers=_TM_HEADERS) as c:
+            # Step 1: search for the team to get their slug + id
+            search = c.get(
+                "https://www.transfermarkt.com/schnellsuche/ergebnis/schnellsuche",
+                params={"query": team_name, "Kat": "Mannschaft"},
+            )
+            match = re.search(r'href="/([^/"]+)/startseite/verein/(\d+)"', search.text)
+            if not match:
+                return []
+            slug, team_id = match.group(1), match.group(2)
+
+            # Step 2: fetch their injury/suspension page
+            injury_page = c.get(
+                f"https://www.transfermarkt.com/{slug}/sperrenundverletzungen/verein/{team_id}",
+            )
+
+        # Step 3: extract player name + injury reason
+        # Names are in profile links; reasons in td class "links hauptlink img-vat"
+        names = re.findall(
+            r'href="/[^/]+/profil/spieler/\d+"[^>]*>([^<]+)</a>',
+            injury_page.text,
+        )
+        reasons = re.findall(
+            r'<td class="links hauptlink img-vat">([^<]+)</td>',
+            injury_page.text,
+        )
+        results = []
+        for name, reason in zip(names, reasons):
+            name = name.strip()
+            reason = reason.strip()
+            if name and reason:
+                results.append(f"{name} — {reason}")
+        return results[:10]
+    except Exception:
+        return []
+
+
+def _fetch_injury_news(home_team: str, away_team: str) -> str:
+    """Fetch current injury/suspension data from Transfermarkt for both teams."""
+    home_injuries = _transfermarkt_injuries(home_team)
+    away_injuries = _transfermarkt_injuries(away_team)
+    parts = []
+    if home_injuries:
+        parts.append(f"{home_team} injuries/suspensions:\n" + "\n".join(home_injuries))
+    else:
+        parts.append(f"{home_team} injuries/suspensions: none reported")
+    if away_injuries:
+        parts.append(f"{away_team} injuries/suspensions:\n" + "\n".join(away_injuries))
+    else:
+        parts.append(f"{away_team} injuries/suspensions: none reported")
+    return "\n\n".join(parts)
+
+
 def generate_prediction(match_context: dict) -> dict:
+    home_team = match_context['home_team']
+    away_team = match_context['away_team']
+
+    injury_news = _fetch_injury_news(home_team, away_team)
+
     prompt = f"""You are an expert football analyst. Analyse the following match data and provide a prediction.
 
-Match: {match_context['home_team']} vs {match_context['away_team']}
+Match: {home_team} vs {away_team}
 Fixture ID: {match_context['fixture_id']}
 
-Home team recent form: {json.dumps(match_context.get('home_recent_matches', {}), indent=2)}
-Away team recent form: {json.dumps(match_context.get('away_recent_matches', {}), indent=2)}
-Head to head history: {json.dumps(match_context.get('head_to_head', {}), indent=2)}
+Home team recent form: {json.dumps(match_context.get('home_recent_matches', {}), separators=(',', ':'))}
+Away team recent form: {json.dumps(match_context.get('away_recent_matches', {}), separators=(',', ':'))}
+Head to head history: {json.dumps(match_context.get('head_to_head', {}), separators=(',', ':'))}
 Home league rank: {match_context.get('home_league_rank', 'N/A')}
 Away league rank: {match_context.get('away_league_rank', 'N/A')}
 
-Respond ONLY with a valid JSON object in exactly this format:
+Latest injury & suspension news:
+{injury_news if injury_news else "No injury information available."}
+
+Respond ONLY with a valid JSON object in exactly this format with no other text:
 {{
   "predicted_home_score": <integer>,
   "predicted_away_score": <integer>,
   "confidence": <float between 0 and 1>,
-  "reasoning": "<concise reasoning summary>",
-  "suggested_bet": "<e.g. Home Win, Draw, Away Win, Both Teams to Score, Over 2.5 Goals>"
-}}"""
+  "reasoning": "<A detailed 3-5 sentence explanation covering: (1) each team's recent form and key trends, (2) how their league positions and head-to-head record influences the prediction, (3) any injury/suspension concerns that affect the prediction, and (4) why you chose this specific scoreline and bet. Write it as a knowledgeable analyst talking directly to a bettor.>",
+  "suggested_bet": "<e.g. Home Win, Draw, Away Win, Both Teams to Score, Over 2.5 Goals>",
+  "home_injuries": ["<player name — reason>", ...],
+  "away_injuries": ["<player name — reason>", ...]
+}}
+
+Use empty arrays for home_injuries/away_injuries if none found."""
 
     try:
-        message = client.messages.create(
+        response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=512,
+            max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = message.content[0].text.strip()
-        return json.loads(raw)
-    except Exception:
-        return _statistical_prediction(match_context)
+        for block in response.content:
+            text = getattr(block, "text", None)
+            if getattr(block, "type", None) == "text" and text and text.strip():
+                return _extract_json(text)
+    except Exception as e:
+        print(f"[claude_adapter] ERROR: {e}")
+
+    result = _statistical_prediction(match_context)
+    result["home_injuries"] = []
+    result["away_injuries"] = []
+    return result

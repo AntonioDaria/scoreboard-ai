@@ -21,6 +21,7 @@ export interface UIFixture {
   homeTeam: UITeamBasic;
   awayTeam: UITeamBasic;
   date: string;
+  utcDate: string;
   time: string;
   venue: string;
 }
@@ -52,6 +53,11 @@ export interface UserPrediction {
   reasoning: string;
   suggested_bet: string;
   created_at: string;
+  actual_home_score: number | null;
+  actual_away_score: number | null;
+  result: string;
+  home_injuries: string[];
+  away_injuries: string[];
 }
 
 export interface SlipItem {

@@ -27,8 +27,10 @@ MATCH_CONTEXT = {
 def test_generate_prediction_uses_claude():
     mock_content = MagicMock()
     mock_content.text = json.dumps(MOCK_PREDICTION)
+    mock_content.type = "text"
     mock_message = MagicMock()
     mock_message.content = [mock_content]
+    mock_message.stop_reason = "end_turn"
 
     with patch("app.adapters.claude_adapter.client") as mock_client:
         mock_client.messages.create.return_value = mock_message
@@ -37,6 +39,8 @@ def test_generate_prediction_uses_claude():
     assert result["predicted_home_score"] == 2
     assert result["suggested_bet"] == "Home Win"
     assert 0 <= result["confidence"] <= 1
+    assert "home_injuries" in result
+    assert "away_injuries" in result
 
 
 def test_generate_prediction_falls_back_on_claude_error():

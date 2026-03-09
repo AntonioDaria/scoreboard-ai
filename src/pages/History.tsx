@@ -26,8 +26,8 @@ const History = () => {
   );
 
   const total = predictions.length;
-  const correct = 0;
-  const incorrect = 0;
+  const correct = predictions.filter((p: UserPrediction) => p.result === "correct").length;
+  const incorrect = predictions.filter((p: UserPrediction) => p.result === "incorrect").length;
 
   const statCards = [
     { icon: Target, label: "Predictions", value: total.toString(), color: "text-primary", bg: "bg-primary/10" },
@@ -150,13 +150,29 @@ const History = () => {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <Clock className="mx-auto h-4 w-4 text-muted-foreground" />
+                            {pred.actual_home_score !== null && pred.actual_away_score !== null ? (
+                              <span className="rounded bg-muted px-2 py-0.5 font-display font-bold text-foreground">
+                                {pred.actual_home_score} - {pred.actual_away_score}
+                              </span>
+                            ) : (
+                              <Clock className="mx-auto h-4 w-4 text-muted-foreground" />
+                            )}
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">{pred.suggested_bet}</td>
                           <td className="px-4 py-3 text-center">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-draw/10 px-2.5 py-0.5 text-xs font-medium text-draw">
-                              <Clock className="h-3 w-3" /> Pending
-                            </span>
+                            {pred.result === "correct" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-win/10 px-2.5 py-0.5 text-xs font-medium text-win">
+                                <CheckCircle2 className="h-3 w-3" /> Correct
+                              </span>
+                            ) : pred.result === "incorrect" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-loss/10 px-2.5 py-0.5 text-xs font-medium text-loss">
+                                <XCircle className="h-3 w-3" /> Incorrect
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-draw/10 px-2.5 py-0.5 text-xs font-medium text-draw">
+                                <Clock className="h-3 w-3" /> Pending
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -172,9 +188,13 @@ const History = () => {
                         <span className="text-xs text-muted-foreground">
                           {new Date(pred.created_at).toLocaleDateString()}
                         </span>
-                        <span className="rounded-full bg-draw/10 px-2 py-0.5 text-xs font-medium text-draw">
-                          Pending
-                        </span>
+                        {pred.result === "correct" ? (
+                          <span className="rounded-full bg-win/10 px-2 py-0.5 text-xs font-medium text-win">Correct</span>
+                        ) : pred.result === "incorrect" ? (
+                          <span className="rounded-full bg-loss/10 px-2 py-0.5 text-xs font-medium text-loss">Incorrect</span>
+                        ) : (
+                          <span className="rounded-full bg-draw/10 px-2 py-0.5 text-xs font-medium text-draw">Pending</span>
+                        )}
                       </div>
                       <p className="font-display text-sm font-semibold text-foreground">
                         {pred.home_team} vs {pred.away_team}
@@ -187,6 +207,14 @@ const History = () => {
                             {pred.predicted_home_score}-{pred.predicted_away_score}
                           </span>
                         </div>
+                        {pred.actual_home_score !== null && pred.actual_away_score !== null && (
+                          <div className="text-center">
+                            <p className="text-[10px] text-muted-foreground">Actual</p>
+                            <span className="font-display text-sm font-bold text-foreground">
+                              {pred.actual_home_score}-{pred.actual_away_score}
+                            </span>
+                          </div>
+                        )}
                         <div className="ml-auto text-right">
                           <p className="text-[10px] text-muted-foreground">Bet</p>
                           <span className="text-xs text-muted-foreground">{pred.suggested_bet}</span>

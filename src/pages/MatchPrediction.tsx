@@ -44,11 +44,12 @@ const MatchPrediction = () => {
   });
 
   // 1. Fetch fixture basic info
-  const { data: fixture, isLoading: fixtureLoading } = useQuery({
+  const { data: fixture, isLoading: fixtureLoading, isError: fixtureError } = useQuery({
     queryKey: ["fixture", fixtureId],
     queryFn: () => api.fetchFixture(fixtureId),
     enabled: !!fixtureId,
     staleTime: 5 * 60 * 1000,
+    retry: 2,
   });
 
   const homeId = fixture?.homeTeam.id;
@@ -84,6 +85,17 @@ const MatchPrediction = () => {
     staleTime: 5 * 60 * 1000,
   });
 
+  const homeTeamName = fixture?.homeTeam.name;
+  const awayTeamName = fixture?.awayTeam.name;
+  const matchUtcDate = fixture?.utcDate;
+
+  const { data: lineups } = useQuery({
+    queryKey: ["lineups", homeTeamName, awayTeamName, matchUtcDate],
+    queryFn: () => api.fetchLineups(homeTeamName!, awayTeamName!, matchUtcDate!, leagueCode),
+    enabled: !!homeTeamName && !!awayTeamName && !!matchUtcDate,
+    staleTime: 5 * 60 * 1000,
+  });
+
   if (fixtureLoading) {
     return (
       <Layout>
@@ -98,7 +110,9 @@ const MatchPrediction = () => {
     return (
       <Layout>
         <div className="py-20 text-center">
-          <p className="text-muted-foreground">Match not found</p>
+          <p className="text-muted-foreground">
+            {fixtureError ? "Unable to load match — please try again" : "Match not found"}
+          </p>
           <Link to="/fixtures" className="mt-4 inline-block text-primary hover:underline">
             Back to matches
           </Link>
@@ -110,13 +124,16 @@ const MatchPrediction = () => {
   const homePosition = standings.find((s) => s.teamId === homeId)?.position ?? null;
   const awayPosition = standings.find((s) => s.teamId === awayId)?.position ?? null;
 
+  const homeLineup = lineups?.home;
+  const awayLineup = lineups?.away;
+
   const homeTeamDetail: UITeamDetail = {
     ...fixture.homeTeam,
     leaguePosition: homePosition,
     form: homeForm as FormResult[],
     injuries: [],
-    formation: "4-4-2",
-    startingXI: [],
+    formation: homeLineup?.formation ?? "4-4-2",
+    startingXI: homeLineup?.players ?? [],
   };
 
   const awayTeamDetail: UITeamDetail = {
@@ -124,8 +141,8 @@ const MatchPrediction = () => {
     leaguePosition: awayPosition,
     form: awayForm as FormResult[],
     injuries: [],
-    formation: "4-4-2",
-    startingXI: [],
+    formation: awayLineup?.formation ?? "4-4-2",
+    startingXI: awayLineup?.players ?? [],
   };
 
   // H2H stats
@@ -295,21 +312,25 @@ const MatchPrediction = () => {
                 <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Injuries & Suspensions
                 </p>
-                {team.injuries.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {team.injuries.map((inj) => (
-                      <div
-                        key={inj}
-                        className="flex items-center gap-2 rounded-lg bg-loss/5 px-3 py-2 text-sm"
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-loss" />
-                        <span className="text-foreground/80">{inj}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No injuries reported</p>
-                )}
+                {(() => {
+                  const injuries = idx === 0 ? prediction?.home_injuries : prediction?.away_injuries;
+                  if (!prediction) {
+                    return <p className="text-sm text-muted-foreground">Available after prediction</p>;
+                  }
+                  if (!injuries || injuries.length === 0) {
+                    return <p className="text-sm text-muted-foreground">No injuries reported</p>;
+                  }
+                  return (
+                    <div className="space-y-1.5">
+                      {injuries.map((inj) => (
+                        <div key={inj} className="flex items-center gap-2 rounded-lg bg-loss/5 px-3 py-2 text-sm">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-loss" />
+                          <span className="text-foreground/80">{inj}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Formation */}
@@ -415,8 +436,8 @@ const MatchPrediction = () => {
             )}
             <Button
               onClick={handleGeneratePrediction}
-              disabled={predLoading || (!!token && remaining?.remaining === 0)}
-              className="h-12 gap-2 rounded-xl bg-primary px-8 font-display text-base font-semibold text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.3)] hover:bg-primary/90 hover:shadow-[0_0_30px_hsl(var(--primary)/0.4)]"
+              disabled={!token || predLoading || remaining?.remaining === 0}
+              className="h-12 gap-2 rounded-xl bg-primary px-8 font-display text-base font-semibold text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.3)] hover:bg-primary/90 hover:shadow-[0_0_30px_hsl(var(--primary)/0.4)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
               {predLoading ? (
                 <>

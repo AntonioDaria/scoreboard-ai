@@ -18,10 +18,17 @@ def _get(endpoint: str, params: dict = None) -> dict:
     cached = _cache.get(key)
     if cached and time.time() - cached["ts"] < CACHE_TTL:
         return cached["data"]
-    with httpx.Client() as client:
-        response = client.get(f"{BASE_URL}/{endpoint}", headers=HEADERS, params=params or {})
-        response.raise_for_status()
-        data = response.json()
+    try:
+        with httpx.Client(timeout=15) as client:
+            response = client.get(f"{BASE_URL}/{endpoint}", headers=HEADERS, params=params or {})
+            if response.status_code == 429:
+                # Rate limited — return cached data if available, otherwise empty
+                return (_cache.get(key) or {}).get("data", {})
+            response.raise_for_status()
+            data = response.json()
+    except (httpx.TimeoutException, httpx.NetworkError) as e:
+        print(f"[football_data] network error for {endpoint}: {e}")
+        return (_cache.get(key) or {}).get("data", {})
     _cache[key] = {"data": data, "ts": time.time()}
     return data
 

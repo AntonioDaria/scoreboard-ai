@@ -89,6 +89,8 @@ def create_prediction(user_id: int, fixture_id: int, db: Session) -> Prediction:
         confidence=ai_result["confidence"],
         reasoning=ai_result["reasoning"],
         suggested_bet=ai_result["suggested_bet"],
+        home_injuries=ai_result.get("home_injuries", []),
+        away_injuries=ai_result.get("away_injuries", []),
     )
     db.add(prediction)
     db.commit()

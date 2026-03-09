@@ -67,9 +67,9 @@ const PredictionCard = ({
               <TrendingUp className="h-3.5 w-3.5" />
               Confidence
             </div>
-            <span className="font-display font-bold text-primary">{confidence}%</span>
+            <span className="font-display font-bold text-primary">{Math.round(confidence * 100)}%</span>
           </div>
-          <Progress value={confidence} className="h-2 bg-muted" />
+          <Progress value={confidence * 100} className="h-2 bg-muted" />
         </div>
 
         {/* Suggested bet */}

@@ -2,6 +2,17 @@ import type { UIFixture, FormResult, H2HRecord, UserPrediction } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
+export const TOKEN_KEY = "scoreboard_token";
+
+async function apiFetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init);
+  if (res.status === 401) {
+    localStorage.removeItem(TOKEN_KEY);
+    window.dispatchEvent(new Event("auth:logout"));
+  }
+  return res;
+}
+
 // --- Auth ---
 
 export async function login(email: string, password: string): Promise<string> {
@@ -71,6 +82,7 @@ function mapMatch(m: Record<string, unknown>): UIFixture {
       leaguePosition: null,
     },
     date: formatDate(m.utcDate as string),
+    utcDate: m.utcDate as string,
     time: formatTime(m.utcDate as string),
     venue: (m.venue as string) ?? "",
   };
@@ -87,14 +99,30 @@ export const LEAGUES = [
 ];
 
 export async function fetchLeagueFixtures(competitionCode: string, limit = 5): Promise<UIFixture[]> {
-  const res = await fetch(
-    `${API_BASE}/fixtures?competition_code=${competitionCode}&status=SCHEDULED&limit=${limit}`
-  );
-  if (!res.ok) return [];
-  const data = (await res.json()) as { matches?: unknown[] };
-  return (data.matches ?? [])
-    .slice(0, limit)
-    .map((m) => mapMatch(m as Record<string, unknown>));
+  // Fetch SCHEDULED + TIMED (about to kick off) in parallel, merge and sort
+  const [scheduledRes, timedRes] = await Promise.all([
+    fetch(`${API_BASE}/fixtures?competition_code=${competitionCode}&status=SCHEDULED&limit=${limit}`),
+    fetch(`${API_BASE}/fixtures?competition_code=${competitionCode}&status=TIMED&limit=${limit}`),
+  ]);
+
+  const scheduled = scheduledRes.ok
+    ? ((await scheduledRes.json()) as { matches?: unknown[] }).matches ?? []
+    : [];
+  const timed = timedRes.ok
+    ? ((await timedRes.json()) as { matches?: unknown[] }).matches ?? []
+    : [];
+
+  const seen = new Set<number>();
+  const merged: UIFixture[] = [];
+  for (const m of [...timed, ...scheduled]) {
+    const match = m as Record<string, unknown>;
+    const id = match.id as number;
+    if (!seen.has(id)) {
+      seen.add(id);
+      merged.push(mapMatch(match));
+    }
+  }
+  return merged.slice(0, limit);
 }
 
 export async function fetchFixture(matchId: number): Promise<UIFixture | null> {
@@ -137,6 +165,36 @@ export async function fetchStandings(competitionCode: string): Promise<Standings
   }));
 }
 
+export interface LineupPlayer {
+  name: string;
+  number: number;
+  position: string;
+}
+
+export interface TeamLineup {
+  formation: string;
+  players: LineupPlayer[];
+}
+
+export async function fetchLineups(
+  homeTeam: string,
+  awayTeam: string,
+  matchDate: string,
+  competitionCode?: string,
+): Promise<{ home: TeamLineup | null; away: TeamLineup | null }> {
+  // ESPN date format: YYYYMMDD — matchDate comes in as ISO "2026-03-06T15:00:00Z"
+  const espnDate = matchDate.slice(0, 10).replace(/-/g, "");
+  const params = new URLSearchParams({
+    home_team: homeTeam,
+    away_team: awayTeam,
+    match_date: espnDate,
+  });
+  if (competitionCode) params.set("competition_code", competitionCode);
+  const res = await fetch(`${API_BASE}/lineups?${params}`);
+  if (!res.ok) return { home: null, away: null };
+  return res.json();
+}
+
 export async function fetchMatchH2H(matchId: number): Promise<H2HRecord[]> {
   const res = await fetch(`${API_BASE}/h2h/${matchId}?limit=5`);
   if (!res.ok) return [];
@@ -157,7 +215,7 @@ export async function fetchMatchH2H(matchId: number): Promise<H2HRecord[]> {
 // --- Predictions ---
 
 export async function createPrediction(fixtureId: number, token: string): Promise<UserPrediction> {
-  const res = await fetch(`${API_BASE}/predictions`, {
+  const res = await apiFetch(`${API_BASE}/predictions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -173,7 +231,7 @@ export async function createPrediction(fixtureId: number, token: string): Promis
 }
 
 export async function fetchMyPredictions(token: string): Promise<UserPrediction[]> {
-  const res = await fetch(`${API_BASE}/predictions`, {
+  const res = await apiFetch(`${API_BASE}/predictions`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
@@ -181,7 +239,7 @@ export async function fetchMyPredictions(token: string): Promise<UserPrediction[
 }
 
 export async function fetchRemainingPredictions(token: string): Promise<{ used: number; limit: number; remaining: number }> {
-  const res = await fetch(`${API_BASE}/predictions/remaining`, {
+  const res = await apiFetch(`${API_BASE}/predictions/remaining`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return { used: 0, limit: 5, remaining: 5 };
@@ -191,7 +249,7 @@ export async function fetchRemainingPredictions(token: string): Promise<{ used: 
 // --- Betting Slips ---
 
 export async function fetchMySlips(token: string): Promise<import("./types").SlipSummary[]> {
-  const res = await fetch(`${API_BASE}/slips`, {
+  const res = await apiFetch(`${API_BASE}/slips`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
@@ -199,7 +257,7 @@ export async function fetchMySlips(token: string): Promise<import("./types").Sli
 }
 
 export async function createSlip(name: string, token: string): Promise<import("./types").SlipSummary> {
-  const res = await fetch(`${API_BASE}/slips`, {
+  const res = await apiFetch(`${API_BASE}/slips`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ name }),
@@ -209,7 +267,7 @@ export async function createSlip(name: string, token: string): Promise<import(".
 }
 
 export async function addToSlip(slipId: number, predictionId: number, stake: number, token: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/slips/${slipId}/items`, {
+  const res = await apiFetch(`${API_BASE}/slips/${slipId}/items`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ prediction_id: predictionId, stake }),
@@ -218,7 +276,7 @@ export async function addToSlip(slipId: number, predictionId: number, stake: num
 }
 
 export async function fetchSlip(slipId: number, token: string): Promise<import("./types").Slip> {
-  const res = await fetch(`${API_BASE}/slips/${slipId}`, {
+  const res = await apiFetch(`${API_BASE}/slips/${slipId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error("Slip not found");
