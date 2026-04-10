@@ -39,6 +39,12 @@ def _get(endpoint: str, params: dict = None) -> dict:
     except (httpx.TimeoutException, httpx.NetworkError):
         logger.exception("Network error fetching football data", extra={"endpoint": endpoint})
         return (_cache.get(key) or {}).get("data", {})
+    except httpx.HTTPStatusError as e:
+        logger.warning(
+            "football-data.org returned an error response",
+            extra={"endpoint": endpoint, "status_code": e.response.status_code},
+        )
+        return (_cache.get(key) or {}).get("data", {})
     _cache[key] = {"data": data, "ts": time.time()}
     return data
 

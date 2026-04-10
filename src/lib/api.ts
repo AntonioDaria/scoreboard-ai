@@ -125,11 +125,11 @@ export async function fetchLeagueFixtures(competitionCode: string, limit = 5): P
   return merged.slice(0, limit);
 }
 
-export async function fetchFixture(matchId: number): Promise<UIFixture | null> {
+export async function fetchFixture(matchId: number): Promise<UIFixture> {
   const res = await fetch(`${API_BASE}/fixture/${matchId}`);
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(`Failed to fetch fixture: ${res.status}`);
   const data = await res.json();
-  if (!data?.id) return null;
+  if (!data?.id) throw new Error("Match data unavailable — API may be rate limited");
   return mapMatch(data as Record<string, unknown>);
 }
 

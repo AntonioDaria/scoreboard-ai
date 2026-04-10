@@ -49,7 +49,8 @@ const MatchPrediction = () => {
     queryFn: () => api.fetchFixture(fixtureId),
     enabled: !!fixtureId,
     staleTime: 5 * 60 * 1000,
-    retry: 2,
+    retry: 4,
+    retryDelay: (attempt) => Math.min(2000 * 2 ** attempt, 15000),
   });
 
   const homeId = fixture?.homeTeam.id;

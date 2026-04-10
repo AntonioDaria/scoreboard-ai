@@ -82,6 +82,32 @@ def test_get_returns_stale_cache_on_timeout():
     assert result == {"fallback": True}
 
 
+def test_get_returns_stale_cache_on_upstream_500():
+    fd_module._cache[_cache_key("competitions/PL/matches")] = {
+        "data": {"stale": True},
+        "ts": time.time() - 600,
+    }
+    mock_500 = _mock_response(status_code=500)
+    mock_500.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "500", request=MagicMock(), response=mock_500
+    )
+    with patch("app.adapters.football_data_adapter.httpx.Client") as MockClient:
+        MockClient.return_value.__enter__.return_value.get.return_value = mock_500
+        result = _get("competitions/PL/matches")
+    assert result == {"stale": True}
+
+
+def test_get_returns_empty_on_upstream_500_with_no_cache():
+    mock_500 = _mock_response(status_code=500)
+    mock_500.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "500", request=MagicMock(), response=mock_500
+    )
+    with patch("app.adapters.football_data_adapter.httpx.Client") as MockClient:
+        MockClient.return_value.__enter__.return_value.get.return_value = mock_500
+        result = _get("competitions/PL/matches")
+    assert result == {}
+
+
 def test_get_returns_empty_on_timeout_with_no_cache():
     with patch("app.adapters.football_data_adapter.httpx.Client") as MockClient:
         MockClient.return_value.__enter__.return_value.get.side_effect = httpx.TimeoutException("timeout")

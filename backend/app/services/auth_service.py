@@ -1,8 +1,8 @@
 """Service layer for user authentication: registration, login, JWT issuance, and token validation."""
 import logging
 import os
+import bcrypt
 from datetime import datetime, timedelta
-from passlib.context import CryptContext
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -15,15 +15,13 @@ SECRET_KEY = os.getenv("SECRET_KEY", "changeme")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def register_user(email: str, password: str, db: Session) -> User:
     """Create a new user account with a bcrypt-hashed password, rejecting duplicate emails."""
     existing = db.query(User).filter(User.email == email).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
-    hashed = pwd_context.hash(password)
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     user = User(email=email, hashed_password=hashed)
     db.add(user)
     db.commit()
@@ -35,7 +33,7 @@ def register_user(email: str, password: str, db: Session) -> User:
 def authenticate_user(email: str, password: str, db: Session) -> str:
     """Verify credentials and return a signed JWT access token, raising 401 on failure."""
     user = db.query(User).filter(User.email == email).first()
-    if not user or not pwd_context.verify(password, user.hashed_password):
+    if not user or not bcrypt.checkpw(password.encode(), user.hashed_password.encode()):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     logger.info("User authenticated", extra={"user_id": user.id, "email": user.email})
     return _create_access_token({"sub": str(user.id), "email": user.email})
