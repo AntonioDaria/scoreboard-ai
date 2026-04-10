@@ -1,5 +1,8 @@
+import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.db.database import get_db
 from app.schemas.auth_schemas import UserRegister, UserLogin, UserResponse, TokenResponse

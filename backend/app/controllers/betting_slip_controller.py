@@ -1,6 +1,9 @@
+import logging
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.db.database import get_db
 from app.schemas.betting_slip_schemas import SlipCreate, SlipCreateResponse, SlipItemCreate, SlipItemResponse, SlipResponse

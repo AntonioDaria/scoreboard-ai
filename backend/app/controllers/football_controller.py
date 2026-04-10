@@ -1,5 +1,8 @@
+import logging
 from fastapi import APIRouter, Query
 from app.services import football_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

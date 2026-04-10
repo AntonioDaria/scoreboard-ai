@@ -1,5 +1,8 @@
+import logging
 import httpx
 import re
+
+logger = logging.getLogger(__name__)
 
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 
@@ -128,6 +131,10 @@ def get_lineups(
                     break
 
             if not event_id or not league_slug:
+                logger.warning(
+                    "ESPN event not found for match",
+                    extra={"home_team": home_team, "away_team": away_team, "match_date": match_date},
+                )
                 return {"home": None, "away": None}
 
             res = c.get(
@@ -161,6 +168,9 @@ def get_lineups(
 
             return {"home": home_lineup, "away": away_lineup}
 
-    except Exception as e:
-        print(f"[espn_adapter] ERROR: {e}")
+    except Exception:
+        logger.exception(
+            "ESPN lineup fetch failed",
+            extra={"home_team": home_team, "away_team": away_team, "match_date": match_date},
+        )
         return {"home": None, "away": None}

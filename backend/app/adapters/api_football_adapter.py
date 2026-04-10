@@ -1,8 +1,11 @@
+import logging
 import os
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://v3.football.api-sports.io"
 API_KEY = os.getenv("API_FOOTBALL_KEY", "")

@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
@@ -6,6 +7,8 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "changeme")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
@@ -23,6 +26,7 @@ def register_user(email: str, password: str, db: Session) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
+    logger.info("User registered", extra={"user_id": user.id, "email": user.email})
     return user
 
 
@@ -30,6 +34,7 @@ def authenticate_user(email: str, password: str, db: Session) -> str:
     user = db.query(User).filter(User.email == email).first()
     if not user or not pwd_context.verify(password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    logger.info("User authenticated", extra={"user_id": user.id, "email": user.email})
     return _create_access_token({"sub": str(user.id), "email": user.email})
 
 
@@ -43,11 +48,14 @@ def get_current_user(token: str, db: Session) -> User:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         if user_id is None:
+            logger.warning("JWT token missing sub claim")
             raise credentials_exception
     except JWTError:
+        logger.warning("JWT decode failed — invalid or expired token")
         raise credentials_exception
     user = db.query(User).filter(User.id == int(user_id)).first()
     if user is None:
+        logger.warning("JWT token references non-existent user", extra={"user_id": user_id})
         raise credentials_exception
     return user
 

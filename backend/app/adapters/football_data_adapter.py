@@ -1,9 +1,12 @@
+import logging
 import os
 import time
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.football-data.org/v4"
 API_KEY = os.getenv("FOOTBALL_DATA_KEY", "")
@@ -22,12 +25,12 @@ def _get(endpoint: str, params: dict = None) -> dict:
         with httpx.Client(timeout=15) as client:
             response = client.get(f"{BASE_URL}/{endpoint}", headers=HEADERS, params=params or {})
             if response.status_code == 429:
-                # Rate limited — return cached data if available, otherwise empty
+                logger.warning("football-data.org rate limit hit", extra={"endpoint": endpoint})
                 return (_cache.get(key) or {}).get("data", {})
             response.raise_for_status()
             data = response.json()
-    except (httpx.TimeoutException, httpx.NetworkError) as e:
-        print(f"[football_data] network error for {endpoint}: {e}")
+    except (httpx.TimeoutException, httpx.NetworkError):
+        logger.exception("Network error fetching football data", extra={"endpoint": endpoint})
         return (_cache.get(key) or {}).get("data", {})
     _cache[key] = {"data": data, "ts": time.time()}
     return data

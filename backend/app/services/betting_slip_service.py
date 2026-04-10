@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -6,12 +7,15 @@ from app.models.betting_slip import BettingSlip
 from app.models.betting_slip_item import BettingSlipItem
 from app.models.prediction import Prediction
 
+logger = logging.getLogger(__name__)
+
 
 def create_slip(user_id: int, name: str, db: Session) -> BettingSlip:
     slip = BettingSlip(user_id=user_id, name=name)
     db.add(slip)
     db.commit()
     db.refresh(slip)
+    logger.info("Betting slip created", extra={"slip_id": slip.id, "user_id": user_id})
     return slip
 
 
@@ -41,6 +45,10 @@ def add_prediction_to_slip(slip_id: int, prediction_id: int, stake: float, db: S
     db.add(item)
     db.commit()
     db.refresh(item)
+    logger.info(
+        "Prediction added to betting slip",
+        extra={"slip_id": slip_id, "prediction_id": prediction_id, "stake": stake},
+    )
     return item
 
 

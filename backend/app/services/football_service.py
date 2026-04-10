@@ -1,3 +1,4 @@
+import logging
 from app.adapters.football_data_adapter import (
     get_competition_matches,
     get_match,
@@ -6,6 +7,8 @@ from app.adapters.football_data_adapter import (
     get_team_matches,
 )
 from app.adapters.espn_adapter import get_lineups as espn_get_lineups
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_fixtures(competition_code: str, status: str = "SCHEDULED", limit: int = 10) -> dict:

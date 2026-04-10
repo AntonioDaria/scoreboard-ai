@@ -1,6 +1,9 @@
+import logging
 import threading
 
 from fastapi import APIRouter, Depends
+
+logger = logging.getLogger(__name__)
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -31,8 +34,8 @@ def _check_results_background():
     db = SessionLocal()
     try:
         result_checker_service.check_pending_predictions(db)
-    except Exception as e:
-        print(f"[result_checker] background error: {e}")
+    except Exception:
+        logger.exception("Result checker background thread failed")
     finally:
         db.close()
 

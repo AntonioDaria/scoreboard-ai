@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -5,6 +6,8 @@ from fastapi import HTTPException, status
 from app.adapters.football_data_adapter import get_match, get_match_h2h, get_standings, get_team_matches
 from app.adapters.claude_adapter import generate_prediction
 from app.models.prediction import Prediction
+
+logger = logging.getLogger(__name__)
 
 DAILY_LIMIT = 5
 
@@ -41,7 +44,7 @@ def create_prediction(user_id: int, fixture_id: int, db: Session) -> Prediction:
     try:
         h2h_data = get_match_h2h(fixture_id)
     except Exception:
-        pass
+        logger.warning("Failed to fetch h2h data", extra={"fixture_id": fixture_id})
 
     try:
         standings_data = get_standings(competition_code)
@@ -49,17 +52,17 @@ def create_prediction(user_id: int, fixture_id: int, db: Session) -> Prediction:
         home_rank = next((t["position"] for t in table if t["team"]["id"] == home_team_id), "N/A")
         away_rank = next((t["position"] for t in table if t["team"]["id"] == away_team_id), "N/A")
     except Exception:
-        pass
+        logger.warning("Failed to fetch standings", extra={"competition_code": competition_code})
 
     try:
         home_form_data = get_team_matches(home_team_id, limit=5)
     except Exception:
-        pass
+        logger.warning("Failed to fetch home team form", extra={"team_id": home_team_id})
 
     try:
         away_form_data = get_team_matches(away_team_id, limit=5)
     except Exception:
-        pass
+        logger.warning("Failed to fetch away team form", extra={"team_id": away_team_id})
 
     match_context = {
         "fixture_id": fixture_id,
@@ -95,6 +98,10 @@ def create_prediction(user_id: int, fixture_id: int, db: Session) -> Prediction:
     db.add(prediction)
     db.commit()
     db.refresh(prediction)
+    logger.info(
+        "Prediction created",
+        extra={"prediction_id": prediction.id, "user_id": user_id, "fixture_id": fixture_id},
+    )
     return prediction
 
 

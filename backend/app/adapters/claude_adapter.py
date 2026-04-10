@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import json
@@ -7,6 +8,8 @@ import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
 
@@ -129,6 +132,7 @@ def _transfermarkt_injuries(team_name: str) -> list[str]:
             )
             match = re.search(r'href="/([^/"]+)/startseite/verein/(\d+)"', search.text)
             if not match:
+                logger.warning("Transfermarkt team not found in search", extra={"team": team_name})
                 return []
             slug, team_id = match.group(1), match.group(2)
 
@@ -155,6 +159,7 @@ def _transfermarkt_injuries(team_name: str) -> list[str]:
                 results.append(f"{name} — {reason}")
         return results[:10]
     except Exception:
+        logger.exception("Transfermarkt injury scrape failed", extra={"team": team_name})
         return []
 
 
@@ -177,6 +182,11 @@ def _fetch_injury_news(home_team: str, away_team: str) -> str:
 def generate_prediction(match_context: dict) -> dict:
     home_team = match_context['home_team']
     away_team = match_context['away_team']
+
+    logger.info(
+        "Generating prediction",
+        extra={"fixture_id": match_context['fixture_id'], "home_team": home_team, "away_team": away_team},
+    )
 
     injury_news = _fetch_injury_news(home_team, away_team)
 
@@ -217,9 +227,13 @@ Use empty arrays for home_injuries/away_injuries if none found."""
             text = getattr(block, "text", None)
             if getattr(block, "type", None) == "text" and text and text.strip():
                 return _extract_json(text)
-    except Exception as e:
-        print(f"[claude_adapter] ERROR: {e}")
+    except Exception:
+        logger.exception("Claude API call failed", extra={"fixture_id": match_context['fixture_id']})
 
+    logger.warning(
+        "Falling back to statistical prediction",
+        extra={"fixture_id": match_context['fixture_id']},
+    )
     result = _statistical_prediction(match_context)
     result["home_injuries"] = []
     result["away_injuries"] = []

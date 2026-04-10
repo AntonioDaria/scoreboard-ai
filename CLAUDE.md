@@ -5,12 +5,12 @@ Full-stack football match prediction app. React/TypeScript frontend, FastAPI/Pyt
 
 ## Commands
 
-### Frontend (Bun)
+### Frontend (npm)
 ```
-bun run dev          # Start dev server (port 5173)
-bun run build        # Production build
-bun run lint         # ESLint check
-bun run test         # Vitest unit tests
+npm run dev          # Start dev server (port 5173)
+npm run build        # Production build
+npm run lint         # ESLint check
+npm run test         # Vitest unit tests
 ```
 
 ### Backend (Poetry)

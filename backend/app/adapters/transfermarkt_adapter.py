@@ -1,5 +1,8 @@
+import logging
 import re
 import httpx
+
+logger = logging.getLogger(__name__)
 
 _TM_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -26,7 +29,6 @@ def _assign_positions(formation: str, players: list[dict]) -> list[dict]:
     except (ValueError, AttributeError):
         groups = [4, 4, 2]
 
-    position_labels = ["DEF", "DEF", "MID", "FWD"]
     # Build per-group labels: first group → DEF, middle → MID, last → FWD
     num_groups = len(groups)
     group_positions = []
@@ -59,6 +61,7 @@ def get_lineup(team_name: str) -> dict:
         with httpx.Client(follow_redirects=True, timeout=10, headers=_TM_HEADERS) as c:
             result = _search_team(c, team_name)
             if not result:
+                logger.warning("Transfermarkt team not found in search", extra={"team": team_name})
                 return {}
             slug, team_id = result
 
@@ -106,4 +109,5 @@ def get_lineup(team_name: str) -> dict:
         return {"formation": formation, "players": players}
 
     except Exception:
+        logger.exception("Transfermarkt lineup scrape failed", extra={"team": team_name})
         return {}

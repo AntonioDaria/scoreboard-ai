@@ -1,8 +1,10 @@
+import logging
 from sqlalchemy.orm import Session
 
 from app.adapters.football_data_adapter import get_match
 from app.models.prediction import Prediction
 
+logger = logging.getLogger(__name__)
 
 import re as _re
 
@@ -85,6 +87,10 @@ def check_pending_predictions(db: Session) -> int:
         try:
             match_data = get_match(prediction.fixture_id)
         except Exception:
+            logger.exception(
+                "Failed to fetch match data for result check",
+                extra={"fixture_id": prediction.fixture_id, "prediction_id": prediction.id},
+            )
             continue
 
         # football-data.org wraps the match under a "match" key for single match endpoint
@@ -109,5 +115,6 @@ def check_pending_predictions(db: Session) -> int:
 
     if updated:
         db.commit()
+        logger.info("Prediction results updated", extra={"count": updated})
 
     return updated
