@@ -72,12 +72,19 @@ docker-compose down -v                             # Stop + wipe DB
 ### Testing
 - Unit tests mock all external dependencies (adapters, DB).
 - Integration tests require real Postgres — spin up with `docker-compose up -d db` first.
-- Always run `npm run db:test:reset` equivalent before integration tests.
+- Reset the test DB before integration tests by running: `docker-compose exec db psql -U postgres -c 'DROP DATABASE IF EXISTS football_predictions_test; CREATE DATABASE football_predictions_test;'`
 - Backend tests live in `backend/app/tests/`, frontend tests co-located with components.
 
 ## Logging
 
 The backend currently has no logging implemented — this is a known gap. When touching any backend file, add proper logging using the standard Python logging pattern. Treat a missing logger in any backend module as a bug to fix, not something optional.
+
+Always use this at the top of every backend module:
+```python
+import logging
+logger = logging.getLogger(__name__)
+```
+Use `logger.info()` with `extra={}` for structured context, `logger.exception()` inside `except` blocks, `logger.warning()` for recoverable issues, `logger.error()` for failures requiring attention.
 
 Priority files to address first:
 - **Adapters:** `claude_adapter.py`, `football_data_adapter.py`, `espn_adapter.py`, `transfermarkt_adapter.py`
