@@ -25,8 +25,13 @@ def _get(endpoint: str, params: dict = None) -> dict:
         with httpx.Client(timeout=15) as client:
             response = client.get(f"{BASE_URL}/{endpoint}", headers=HEADERS, params=params or {})
             if response.status_code == 429:
-                logger.warning("football-data.org rate limit hit", extra={"endpoint": endpoint})
-                return (_cache.get(key) or {}).get("data", {})
+                cached_entry = _cache.get(key)
+                cached_data_age_seconds = round(time.time() - cached_entry["ts"]) if cached_entry else None
+                logger.warning(
+                    "football-data.org rate limit hit",
+                    extra={"endpoint": endpoint, "cached_data_age_seconds": cached_data_age_seconds},
+                )
+                return (cached_entry or {}).get("data", {})
             response.raise_for_status()
             data = response.json()
     except (httpx.TimeoutException, httpx.NetworkError):
