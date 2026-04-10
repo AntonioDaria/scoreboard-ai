@@ -315,6 +315,49 @@ Request → Controller (route handler)
 
 ---
 
+## Claude Code Configuration
+
+This project uses [Claude Code](https://claude.ai/code) as the AI coding assistant. The setup is split across two layers: a project-level `.claude/` folder committed to this repo, and a global `~/.claude/` folder that lives on each developer's local machine. The project-level config is shared and version-controlled; the global config is personal and never committed to git.
+
+### Global `~/.claude/CLAUDE.md`
+
+This file lives on the developer's machine and applies across every project they work on with Claude Code. It is the right place for personal coding standards that should always be in effect. For this project, every developer's global file should contain the Python logging standards so Claude never needs to be reminded of them:
+
+- Always declare `import logging` and `logger = logging.getLogger(__name__)` at the top of every Python module.
+- Never use `print()` for debugging — use the logger instead.
+- Use `logger.info()` with an `extra={}` dict for structured context (e.g. `extra={"user_id": user_id}`).
+- Use `logger.exception()` inside `except` blocks — it captures the stack trace automatically.
+- Use `logger.warning()` for recoverable issues such as missing data, rate limits, or retryable failures.
+- Use `logger.error()` for failures that need attention but where there is no exception to capture.
+
+### Project-level `CLAUDE.md`
+
+`CLAUDE.md` lives in the project root, is committed to git, and is the first thing Claude Code reads at the start of every session. It contains everything that is specific to this codebase: the commands needed to run, test, and migrate the app; an architecture overview explaining how controllers, services, and adapters relate; the key backend and frontend conventions Claude must follow; the current logging migration status; and a list of codebase-specific gotchas (things like the ESPN lineup window, the daily prediction limit, and which API this project actually uses for football data).
+
+### The `.claude/` folder
+
+**`settings.json`** is applied automatically on every session, before any conversation begins. It defines what Claude is and is not allowed to run. The allow list covers `npm run *`, `poetry run *`, `docker-compose *`, and read-only git commands. The deny list blocks `rm -rf`, `curl`, `wget`, `git push`, and reading any `.env` file — so Claude cannot accidentally leak secrets or push to a remote.
+
+**`rules/`** contains three files that load automatically based on which file Claude is currently editing. `backend-conventions.md` applies to any `.py` file and enforces the controller-service-adapter layering, the logging and docstring standards, and the rule that adapters are the only place for outbound HTTP calls. `frontend-conventions.md` applies to any `.ts` or `.tsx` file and enforces the `api.ts`-only fetch rule, the `types.ts`-only type definition rule, and the Tailwind-only styling rule. `testing.md` applies to any test file and enforces isolation, dependency mocking, and the requirement to test unhappy paths. None of these need to be invoked manually.
+
+**`commands/`** contains two slash commands that the developer invokes manually. `/review` injects the current `git diff` and asks Claude to audit the changes for architecture violations, TypeScript issues, security gaps, missing error handling, test coverage gaps, and convention violations — labelling findings as BLOCKER or SUGGESTION. `/fix-issue <number>` fetches a GitHub issue by number, traces the reported bug through the codebase layer by layer, fixes the root cause, and writes a unit test to cover it.
+
+**`agents/`** contains three specialist subagents, each running in its own isolated context window so they do not pollute the main conversation. `code-reviewer` is read-only and produces a structured report that distinguishes blockers from suggestions. `refactor-agent` makes safe, incremental structural changes one at a time without altering behaviour. `security-auditor` performs a deep, exhaustive security audit of the entire codebase, checking auth guards, data exposure, injection surface, and infrastructure configuration. Invoke any of them explicitly by saying "Use the code-reviewer agent to..." — Claude may also invoke them automatically when it judges the task warrants specialist handling.
+
+**`skills/security-review/`** is a lighter security workflow that runs directly in the main session rather than in a separate context window. It is triggered automatically when security-related topics come up in conversation, or manually with `/security-review`. It covers auth guard completeness, data exposure in API responses, external input validation, database query safety, and infrastructure configuration.
+
+### Quick reference
+
+| File | What it does | Triggered by |
+|---|---|---|
+| `settings.json` | Controls what Claude can and cannot execute | Always on — automatic |
+| `rules/*.md` | Enforces conventions for the file type being edited | File type match — automatic |
+| `commands/*.md` | Developer-invoked workflows (`/review`, `/fix-issue`) | Slash command — manual |
+| `agents/*.md` | Specialist subagents in isolated context windows | Explicit invocation — sometimes automatic |
+| `skills/SKILL.md` | Lightweight in-session workflow for security review | Keyword detection — automatic or manual |
+
+---
+
 ## What to Fill In
 
 | Item | Action |
