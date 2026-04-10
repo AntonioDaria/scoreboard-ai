@@ -1,3 +1,4 @@
+"""FastAPI application entry point: registers routers, CORS middleware, and the health check endpoint."""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -24,4 +25,5 @@ app.include_router(betting_slip_controller.router, prefix="/slips", tags=["betti
 
 @app.get("/health")
 def health_check():
+    """Return a simple liveness response used by the load balancer and CI health checks."""
     return {"status": "ok"}

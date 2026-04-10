@@ -1,3 +1,4 @@
+"""SQLAlchemy engine, session factory, and base class shared across all models."""
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -14,6 +15,7 @@ Base = declarative_base()
 
 
 def get_db():
+    """FastAPI dependency that yields a database session and ensures it is closed after the request."""
     db = SessionLocal()
     try:
         yield db

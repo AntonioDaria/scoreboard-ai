@@ -1,3 +1,4 @@
+"""Service layer for user authentication: registration, login, JWT issuance, and token validation."""
 import logging
 import os
 from datetime import datetime, timedelta
@@ -18,6 +19,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def register_user(email: str, password: str, db: Session) -> User:
+    """Create a new user account with a bcrypt-hashed password, rejecting duplicate emails."""
     existing = db.query(User).filter(User.email == email).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
@@ -31,6 +33,7 @@ def register_user(email: str, password: str, db: Session) -> User:
 
 
 def authenticate_user(email: str, password: str, db: Session) -> str:
+    """Verify credentials and return a signed JWT access token, raising 401 on failure."""
     user = db.query(User).filter(User.email == email).first()
     if not user or not pwd_context.verify(password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -39,6 +42,7 @@ def authenticate_user(email: str, password: str, db: Session) -> str:
 
 
 def get_current_user(token: str, db: Session) -> User:
+    """Decode a JWT and return the corresponding User, raising 401 for any invalid or expired token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -61,6 +65,7 @@ def get_current_user(token: str, db: Session) -> User:
 
 
 def _create_access_token(data: dict) -> str:
+    """Sign a JWT containing the given payload with a configurable expiry."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode["exp"] = expire

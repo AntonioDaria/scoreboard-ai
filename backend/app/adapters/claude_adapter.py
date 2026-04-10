@@ -1,3 +1,4 @@
+"""Generates match predictions using the Anthropic Claude API, with Transfermarkt injury data as context and a statistical fallback if the API is unavailable."""
 import logging
 import os
 import re
@@ -180,6 +181,7 @@ def _fetch_injury_news(home_team: str, away_team: str) -> str:
 
 
 def generate_prediction(match_context: dict) -> dict:
+    """Generates an AI-powered match prediction for a fixture, falling back to a statistical model if the Claude API call fails."""
     home_team = match_context['home_team']
     away_team = match_context['away_team']
 

@@ -1,3 +1,4 @@
+"""HTML scraping adapter for Transfermarkt, used to fetch team lineups and injury/suspension data."""
 import logging
 import re
 import httpx
@@ -12,6 +13,7 @@ _TM_HEADERS = {
 
 
 def _search_team(client: httpx.Client, team_name: str) -> tuple[str, str] | None:
+    """Search Transfermarkt for a team and return its (slug, id) pair, or None if not found."""
     search = client.get(
         "https://www.transfermarkt.com/schnellsuche/ergebnis/schnellsuche",
         params={"query": team_name, "Kat": "Mannschaft"},

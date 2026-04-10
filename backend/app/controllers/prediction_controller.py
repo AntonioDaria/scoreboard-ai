@@ -1,3 +1,4 @@
+"""FastAPI router for prediction endpoints: create, list, and fetch predictions with background result checking."""
 import logging
 import threading
 
@@ -16,16 +17,19 @@ bearer = HTTPBearer()
 
 
 def _current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer), db: Session = Depends(get_db)):
+    """Dependency that extracts and validates the JWT bearer token, returning the authenticated user."""
     return auth_service.get_current_user(credentials.credentials, db)
 
 
 @router.post("", response_model=PredictionResponse, status_code=201)
 def create_prediction(body: PredictionCreate, user=Depends(_current_user), db: Session = Depends(get_db)):
+    """Generate and persist an AI prediction for a fixture."""
     return prediction_service.create_prediction(user.id, body.fixture_id, db)
 
 
 @router.get("/remaining")
 def remaining_predictions(user=Depends(_current_user), db: Session = Depends(get_db)):
+    """Return how many predictions the authenticated user has left for today."""
     return prediction_service.get_remaining_predictions(user.id, db)
 
 
@@ -42,10 +46,12 @@ def _check_results_background():
 
 @router.get("", response_model=list[PredictionResponse])
 def list_predictions(user=Depends(_current_user), db: Session = Depends(get_db)):
+    """Return all predictions for the authenticated user, triggering a background result check."""
     threading.Thread(target=_check_results_background, daemon=True).start()
     return prediction_service.get_user_predictions(user.id, db)
 
 
 @router.get("/{prediction_id}", response_model=PredictionResponse)
 def get_prediction(prediction_id: int, user=Depends(_current_user), db: Session = Depends(get_db)):
+    """Return a single prediction by ID."""
     return prediction_service.get_prediction_by_id(prediction_id, db)

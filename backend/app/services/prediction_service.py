@@ -1,3 +1,4 @@
+"""Service layer for AI match predictions: enforces daily limits, assembles match context, and persists results."""
 import logging
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ DAILY_LIMIT = 5
 
 
 def create_prediction(user_id: int, fixture_id: int, db: Session) -> Prediction:
+    """Enforce daily limit, gather match context, call the AI adapter, and persist the resulting prediction."""
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     count_today = (
         db.query(Prediction)
@@ -106,6 +108,7 @@ def create_prediction(user_id: int, fixture_id: int, db: Session) -> Prediction:
 
 
 def get_remaining_predictions(user_id: int, db: Session) -> dict:
+    """Return how many predictions the user has used and how many remain for today."""
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     count_today = (
         db.query(Prediction)
@@ -116,10 +119,12 @@ def get_remaining_predictions(user_id: int, db: Session) -> dict:
 
 
 def get_user_predictions(user_id: int, db: Session) -> list:
+    """Return all predictions belonging to the given user."""
     return db.query(Prediction).filter(Prediction.user_id == user_id).all()
 
 
 def get_prediction_by_id(prediction_id: int, db: Session) -> Prediction:
+    """Return a single prediction by ID, raising 404 if it does not exist."""
     prediction = db.query(Prediction).filter(Prediction.id == prediction_id).first()
     if not prediction:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prediction not found")

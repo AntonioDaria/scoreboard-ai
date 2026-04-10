@@ -1,3 +1,4 @@
+"""FastAPI router for user registration and login endpoints."""
 import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -13,11 +14,13 @@ router = APIRouter()
 
 @router.post("/register", response_model=UserResponse, status_code=201)
 def register(body: UserRegister, db: Session = Depends(get_db)):
+    """Register a new user and return their profile."""
     user = auth_service.register_user(body.email, body.password, db)
     return UserResponse.model_validate(user)
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: UserLogin, db: Session = Depends(get_db)):
+    """Authenticate a user and return a JWT access token."""
     token = auth_service.authenticate_user(body.email, body.password, db)
     return TokenResponse(access_token=token)

@@ -1,3 +1,4 @@
+"""HTTP adapter for the ESPN public API, used to fetch confirmed team lineups for upcoming and live fixtures."""
 import logging
 import httpx
 import re
@@ -23,6 +24,7 @@ _GK_POSITIONS = {"G", "GK"}
 
 
 def _normalize(name: str) -> str:
+    """Lowercase and collapse whitespace in a team name to make fuzzy comparison reliable."""
     name = name.lower().strip()
     for suffix in [" fc", " afc", " cf", " sc", " ac", " united", " city"]:
         pass  # don't strip these — use substring matching instead

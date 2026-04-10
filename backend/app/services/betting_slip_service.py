@@ -1,3 +1,4 @@
+"""Service layer for managing betting slips: creation, item addition, retrieval, and export."""
 import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_slip(user_id: int, name: str, db: Session) -> BettingSlip:
+    """Create and persist a new named betting slip for a user."""
     slip = BettingSlip(user_id=user_id, name=name)
     db.add(slip)
     db.commit()
@@ -20,10 +22,12 @@ def create_slip(user_id: int, name: str, db: Session) -> BettingSlip:
 
 
 def get_user_slips(user_id: int, db: Session) -> list:
+    """Return all betting slips for a user, newest first."""
     return db.query(BettingSlip).filter(BettingSlip.user_id == user_id).order_by(BettingSlip.created_at.desc()).all()
 
 
 def add_prediction_to_slip(slip_id: int, prediction_id: int, stake: float, db: Session) -> BettingSlipItem:
+    """Add a prediction to a slip with a calculated stake and potential winnings, raising 404 if either is missing."""
     slip = db.query(BettingSlip).filter(BettingSlip.id == slip_id).first()
     if not slip:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Slip not found")
@@ -53,6 +57,7 @@ def add_prediction_to_slip(slip_id: int, prediction_id: int, stake: float, db: S
 
 
 def get_slip(slip_id: int, db: Session) -> dict:
+    """Return a slip with its items and total potential winnings, raising 404 if not found."""
     slip = db.query(BettingSlip).filter(BettingSlip.id == slip_id).first()
     if not slip:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Slip not found")
@@ -61,6 +66,7 @@ def get_slip(slip_id: int, db: Session) -> dict:
 
 
 def export_slip(slip_id: int, db: Session) -> dict:
+    """Mark a slip as exported (stamps exported_at) and return it with totals."""
     result = get_slip(slip_id, db)
     slip = result["slip"]
     slip.exported_at = datetime.utcnow()

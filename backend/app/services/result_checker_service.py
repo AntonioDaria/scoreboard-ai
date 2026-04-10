@@ -1,3 +1,4 @@
+"""Service that polls finished matches and updates pending predictions with actual scores and bet results."""
 import logging
 from sqlalchemy.orm import Session
 
